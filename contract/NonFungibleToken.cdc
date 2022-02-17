@@ -156,7 +156,11 @@ pub contract interface NonFungibleToken {
         pub fun idUserExists(id: UInt64): Bool
 
         // createUserNFT can create a corresponding ID's userNFT with the expTime
-        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @UserNFT 
+        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @UserNFT {
+            pre{
+                self.idExists(id:NFTID)&&(self.expired[NFTID] == nil || self.expired[NFTID]! <= getCurrentBlock().height): "no access"
+            }
+        }
 
         //getUserExpired can get contract userNFT's expTime with id
         pub fun getUserExpired(id: UInt64): UInt64
