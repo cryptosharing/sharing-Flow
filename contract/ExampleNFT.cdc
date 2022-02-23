@@ -1,6 +1,8 @@
 //import NonFungibleToken from "./NonFungibleToken.cdc"
 import NonFungibleToken from 0x01
-pub contract ExampleNFT :NonFungibleToken{
+import NonFungibleTokenUser from 0x02
+
+pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
     pub var totalSupply: UInt64
 
     pub event ContractInitialized()
@@ -19,9 +21,11 @@ pub contract ExampleNFT :NonFungibleToken{
 
     pub let CollectionReceiverPath: PublicPath
 
+    pub let CollectionUserReceiverPath: PublicPath
+
     pub let MinterStoragePath: StoragePath
 
-    pub resource UserNFT: NonFungibleToken.INFT{
+    pub resource UserNFT{
 
         pub let id: UInt64
         pub let expTime: UInt64
@@ -42,18 +46,21 @@ pub contract ExampleNFT :NonFungibleToken{
         init(initID: UInt64) {
             self.id = initID
         }
+    }
 
+    pub resource interface Create{
+        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @NonFungibleTokenUser.UserNFT
     }
 
     // The definition of the Collection resource that
     // holds the NFTs that a user owns
-    pub resource Collection: NonFungibleToken.NFTProvider, NonFungibleToken.NFTReceiver, NonFungibleToken.CollectionPublic{
+    pub resource Collection: NonFungibleToken.Provider,NonFungibleToken.Receiver,NonFungibleToken.CollectionPublic,NonFungibleTokenUser.NFTUserProvider,NonFungibleTokenUser.NFTUserReceiver,NonFungibleTokenUser.UserCollectionPublic,Create{
         // dictionary of NFT conforming tokens
         // NFT is a resource type with an `UInt64` ID field
         pub var ownedNFTs: @{UInt64: NonFungibleToken.NFT}
 
         // dictionary of userNFT conforming tokens
-        pub var userNFTs: @{UInt64: NonFungibleToken.UserNFT}
+        pub var userNFTs: @{UInt64: NonFungibleTokenUser.UserNFT}
 
         // dictionary of NFTID and its expTime
         access(contract) let expired: {UInt64: UInt64}
@@ -64,14 +71,15 @@ pub contract ExampleNFT :NonFungibleToken{
             self.userNFTs <- {}
             self.expired = {}
         }
-
+        
         // withdraw 
         //
         // Function that removes an NFT from the collection 
         // and moves it to the caller
         pub fun withdraw(withdrawID: UInt64): @NonFungibleToken.NFT {
-            // If the NFT isn't found, the transaction panics and reverts
             
+            assert(self.expired[withdrawID] == nil || self.expired[withdrawID]! <= getCurrentBlock().height,message:"no access")
+
             let token <- self.ownedNFTs.remove(key: withdrawID)!
 
             emit Withdraw(id: token.id, from: self.owner?.address)
@@ -80,7 +88,7 @@ pub contract ExampleNFT :NonFungibleToken{
         }
 
         // withdraw removes an userNFT from the collection and moves it to the caller
-        pub fun withdrawUser(withdrawID: UInt64): @NonFungibleToken.UserNFT {
+        pub fun withdrawUser(withdrawID: UInt64): @NonFungibleTokenUser.UserNFT {
             post {
                 result.expTime <= getCurrentBlock().height: "you can't auth"
             }
@@ -105,7 +113,7 @@ pub contract ExampleNFT :NonFungibleToken{
         }
 
         // deposit takes an userNFT as an argument and adds it to the collections dictionary
-        pub fun depositUser(token: @NonFungibleToken.UserNFT) {
+        pub fun depositUser(token: @NonFungibleTokenUser.UserNFT) {
             if self.userNFTs[token.id] != nil {
                 destroy self.userNFTs.remove(key: token.id)!
             } 
@@ -131,17 +139,14 @@ pub contract ExampleNFT :NonFungibleToken{
         pub fun getIDs(): [UInt64] {
             return self.ownedNFTs.keys
         }
+
         // getUserIDs returns an array of the UserIDs that are in the collection
         pub fun getUserIDs(): [UInt64] {
             return self.userNFTs.keys
         }
 
-        // createUserNFT can create a corresponding ID's userNFT with the expTime
-        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @NonFungibleToken.UserNFT {
-            var newUserNFT <- create UserNFT(initID: NFTID , initExpTime: expTime)
-            emit CreateUserNFT(id: NFTID, expTime: expTime)
-            self.expired[NFTID] = expTime
-            return <- newUserNFT
+        pub fun borrowNFT(id: UInt64): &NonFungibleToken.NFT {
+            return &self.ownedNFTs[id] as &NonFungibleToken.NFT
         }
 
         //getUserExpired can get contract userNFT's expTime with id
@@ -149,16 +154,27 @@ pub contract ExampleNFT :NonFungibleToken{
             return self.expired[id]!
         }
 
+        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @NonFungibleTokenUser.UserNFT {
+            assert(self.idExists(id:NFTID)&&(self.expired[NFTID] == nil || self.expired[NFTID]! <= getCurrentBlock().height),message:"no access")
+            var newUserNFT <- create UserNFT(initID: NFTID , initExpTime: expTime)
+            emit CreateUserNFT(id: NFTID, expTime: expTime)
+            self.expired[NFTID] = expTime
+            return <- newUserNFT
+        }
+
         destroy() {
             destroy self.ownedNFTs
             destroy self.userNFTs
         }
+
     }
 
     // creates a new empty Collection resource and returns it 
     pub fun createEmptyCollection(): @Collection {
         return <- create Collection()
     }
+
+
 
     // NFTMinter
     //
@@ -175,7 +191,7 @@ pub contract ExampleNFT :NonFungibleToken{
             var newNFT <- create NFT(initID: ExampleNFT.totalSupply)
 
             // change the id so that each ID is unique
-            ExampleNFT.totalSupply = ExampleNFT.totalSupply + 1 as UInt64
+            ExampleNFT.totalSupply = ExampleNFT.totalSupply + 1 
 
             return <- newNFT
         }
@@ -185,13 +201,16 @@ pub contract ExampleNFT :NonFungibleToken{
         self.totalSupply = 0
         self.CollectionStoragePath = /storage/NFTCollection
         self.CollectionReceiverPath = /public/NFTReceiver
+        self.CollectionUserReceiverPath = /public/NFTUserReceiver
         self.MinterStoragePath = /storage/NFTMinter
 		// store an empty NFT Collection in account storage
         self.account.save(<-self.createEmptyCollection(), to: self.CollectionStoragePath)
 
         // publish a reference to the Collection in storage
-        self.account.link<&{NonFungibleToken.NFTReceiver}>(self.CollectionReceiverPath, target: self.CollectionStoragePath)
+        self.account.link<&{NonFungibleToken.Receiver}>(self.CollectionReceiverPath, target: self.CollectionStoragePath)
 
+        self.account.link<&{NonFungibleTokenUser.NFTUserReceiver}>(self.CollectionUserReceiverPath,target: self.CollectionStoragePath)
+	
         // store a minter resource in account storage
         self.account.save(<-create NFTMinter(), to: self.MinterStoragePath)
 	}
