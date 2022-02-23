@@ -48,13 +48,9 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
         }
     }
 
-    pub resource interface Create{
-        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @NonFungibleTokenUser.UserNFT
-    }
-
     // The definition of the Collection resource that
     // holds the NFTs that a user owns
-    pub resource Collection: NonFungibleToken.Provider,NonFungibleToken.Receiver,NonFungibleToken.CollectionPublic,NonFungibleTokenUser.NFTUserProvider,NonFungibleTokenUser.NFTUserReceiver,NonFungibleTokenUser.UserCollectionPublic,Create{
+    pub resource Collection: NonFungibleToken.Provider,NonFungibleToken.Receiver,NonFungibleToken.CollectionPublic,NonFungibleTokenUser.NFTUserProvider,NonFungibleTokenUser.NFTUserReceiver,NonFungibleTokenUser.UserCollectionPublic,NonFungibleTokenUser.Create{
         // dictionary of NFT conforming tokens
         // NFT is a resource type with an `UInt64` ID field
         pub var ownedNFTs: @{UInt64: NonFungibleToken.NFT}
@@ -210,7 +206,7 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
         self.account.link<&{NonFungibleToken.Receiver}>(self.CollectionReceiverPath, target: self.CollectionStoragePath)
 
         self.account.link<&{NonFungibleTokenUser.NFTUserReceiver}>(self.CollectionUserReceiverPath,target: self.CollectionStoragePath)
-	
+
         // store a minter resource in account storage
         self.account.save(<-create NFTMinter(), to: self.MinterStoragePath)
 	}
