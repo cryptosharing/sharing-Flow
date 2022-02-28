@@ -18,13 +18,14 @@ pub contract interface NonFungibleTokenUser{
     // Event that is emitted when a token-user is withdrawn,
     // If the collection is not in an account's storage, `from` will be `nil`.
     //
-    pub event WithdrawUser(id: UInt64, from: Address?)
+    pub event WithdrawUser(id: UInt64, from: Address?) 
 
     // Event that emitted when a token is deposited to a collection.
     //
     pub event DepositUser(id: UInt64, to: Address?)
 
     // Event that emitted when a userNFT is created
+    //
     pub event CreateUserNFT(id: UInt64 , expTime: UInt64)
 
     pub resource UserNFT {
@@ -51,12 +52,28 @@ pub contract interface NonFungibleTokenUser{
         pub fun withdrawUser(withdrawID: UInt64): @UserNFT {
             post{
                 result.id == withdrawID: "The ID of the withdrawn token must be the same as the requested ID"
+                result.expTime <= getCurrentBlock().height: "you can't auth"
             }
         }
     }
     
-    pub resource interface Create{
-        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @UserNFT
+    // Interface to create user 
+    //
+    pub resource interface NFTUserCreate{
+
+        //getUserExpired returns the special id NFT's use deadline
+        pub fun getUserExpired(id: UInt64): UInt64
+
+        // idExists checks to see if a NFT with the given ID exists in the collection
+        pub fun idExists(id: UInt64): Bool
+
+        // create a user in the special NFTID with the expTime
+        // precondition is the NFTID in this Collection and the special NFTID's user is out of deadline or no user before
+        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @UserNFT {
+            pre{
+                self.idExists(id:NFTID)&&(self.getUserExpired(id: NFTID) == 0 || self.getUserExpired(id: NFTID) <= getCurrentBlock().height): "no access"
+            }
+        }
     }
     
     // Interface that an account would commonly 
@@ -70,6 +87,7 @@ pub contract interface NonFungibleTokenUser{
         // with the given ID exists in the collection
         pub fun idUserExists(id: UInt64): Bool
 
+        //getUserExpired returns the special id user NFT's use deadline
         pub fun getUserExpired(id: UInt64): UInt64
     }
 
