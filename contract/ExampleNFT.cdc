@@ -10,33 +10,33 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
     //
     pub event ContractInitialized()
 
-    // Event that is emitted when a token is withdrawn,
+    // Event that is emitted when a NFT is withdrawn,
     // indicating the owner of the collection that it was withdrawn from.
     //
     // If the collection is not in an account's storage, `from` will be `nil`.
     //
     pub event Withdraw(id: UInt64, from: Address?)
 
-    // Event that is emitted when a token-user is withdrawn,
+    // Event that is emitted when a NFT-user is withdrawn,
     // If the collection is not in an account's storage, `from` will be `nil`.
     //
     pub event WithdrawUser(id: UInt64, from: Address?)
 
-    // Event that emitted when a token is deposited to a collection.
+    // Event that emitted when a NFT is deposited to a collection.
     //
     // It indicates the owner of the collection that it was deposited to.
     //
     pub event Deposit(id: UInt64, to: Address?)
 
-    // Event that emitted when a token is deposited to a collection.
+    // Event that emitted when a NFTUser is deposited to a collection.
     //
     pub event DepositUser(id: UInt64, to: Address?)
 
-    // Event that emitted when a userNFT is created
+    // Event that emitted when a NFTUser is created
     //
-    pub event CreateUserNFT(id: UInt64 , expTime: UInt64)
+    pub event CreateNFTUser(id: UInt64 , expTime: UInt64)
 
-    //ExampleNFT store Collection path
+    //ExampleNFT store Collection's path in storage
     //
     pub let CollectionStoragePath: StoragePath
 
@@ -52,8 +52,19 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
     //
     pub let MinterStoragePath: StoragePath
 
-    //Declare the UserNFT resource type
-    pub resource UserNFT{
+    // Declare the NFT resource type
+    pub resource NFT: NonFungibleToken.INFT{
+        // The unique ID that differentiates each NFT
+        pub let id: UInt64
+
+        // Initialize both fields in the init function
+        init(initID: UInt64) {
+            self.id = initID
+        }
+    }
+
+    //Declare the NFTUser resource type
+    pub resource NFTUser{
         // The unique ID that differentiates each NFT
         //
         pub let id: UInt64
@@ -70,34 +81,22 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
         }
     }
 
-    // Declare the NFT resource type
-    pub resource NFT: NonFungibleToken.INFT{
-        // The unique ID that differentiates each NFT
-        pub let id: UInt64
-
-        // Initialize both fields in the init function
-        init(initID: UInt64) {
-            self.id = initID
-        }
-    }
-
     // The definition of the Collection resource that
-    // holds the NFTs that a user owns
+    // holds the NFTs and NFTUsers that a user owns
     pub resource Collection: NonFungibleToken.Provider,NonFungibleToken.Receiver,NonFungibleToken.CollectionPublic,NonFungibleTokenUser.NFTUserProvider,NonFungibleTokenUser.NFTUserReceiver,NonFungibleTokenUser.UserCollectionPublic,NonFungibleTokenUser.NFTUserCreate{
         // dictionary of NFT conforming tokens
-        // NFT is a resource type with an `UInt64` ID field
         pub var ownedNFTs: @{UInt64: NonFungibleToken.NFT}
 
-        // dictionary of userNFT conforming tokens
-        pub var userNFTs: @{UInt64: NonFungibleTokenUser.UserNFT}
+        // dictionary of NFTUser conforming tokens
+        pub var NFTUsers: @{UInt64: NonFungibleTokenUser.NFTUser}
 
-        // dictionary of NFTID and its expTime
+        // dictionary of NFT's ID and its NFTUser's expTime
         access(contract) let expired: {UInt64: UInt64}
 
         // Initialize the NFTs field to an empty collection
         init () {
             self.ownedNFTs <- {}
-            self.userNFTs <- {}
+            self.NFTUsers <- {}
             self.expired = {}
         }
         
@@ -107,7 +106,7 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
         // and moves it to the caller
         pub fun withdraw(withdrawID: UInt64): @NonFungibleToken.NFT {
             
-            assert(self.expired[withdrawID] == nil || self.expired[withdrawID]! <= getCurrentBlock().height,message:"no access")
+            assert(self.expired[withdrawID] == nil || self.expired[withdrawID]! <= getCurrentBlock().height,message:"no access to withdraw the locked NFT")
 
             let token <- self.ownedNFTs.remove(key: withdrawID)!
 
@@ -116,9 +115,9 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
             return <- token
         }
 
-        // withdraw removes an userNFT from the collection and moves it to the caller
-        pub fun withdrawUser(withdrawID: UInt64): @NonFungibleTokenUser.UserNFT {
-            let token <- self.userNFTs.remove(key: withdrawID)!
+        // withdraw removes an NFTUser from the collection and moves it to the caller
+        pub fun withdrawUser(withdrawID: UInt64): @NonFungibleTokenUser.NFTUser {
+            let token <- self.NFTUsers.remove(key: withdrawID)!
 
             emit WithdrawUser(id: token.id, from: self.owner?.address)
 
@@ -138,15 +137,15 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
             self.ownedNFTs[token.id] <-! token
         }
 
-        // deposit takes an userNFT as an argument and adds it to the collections dictionary
-        pub fun depositUser(token: @NonFungibleTokenUser.UserNFT) {
-            if self.userNFTs[token.id] != nil {
-                destroy self.userNFTs.remove(key: token.id)!
+        // deposit takes an NFTUser as an argument and adds it to the collections dictionary
+        pub fun depositUser(token: @NonFungibleTokenUser.NFTUser) {
+            if self.NFTUsers[token.id] != nil {
+                destroy self.NFTUsers.remove(key: token.id)!
             } 
 
             emit DepositUser(id: token.id, to: self.owner?.address)
 
-            self.userNFTs[token.id] <-! token
+            self.NFTUsers[token.id] <-! token
         }
 
         // idExists checks to see if a NFT 
@@ -155,10 +154,10 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
             return self.ownedNFTs[id] != nil
         }
 
-        // idUserExists checks to see if a userNFT 
+        // idUserExists checks to see if a NFTUser 
         // with the given ID exists in the collection
         pub fun idUserExists(id: UInt64): Bool {
-            return self.userNFTs[id] != nil
+            return self.NFTUsers[id] != nil
         }
 
         // getIDs returns an array of the IDs that are in the collection
@@ -168,7 +167,7 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
 
         // getUserIDs returns an array of the UserIDs that are in the collection
         pub fun getUserIDs(): [UInt64] {
-            return self.userNFTs.keys
+            return self.NFTUsers.keys
         }
 
         // Returns a borrowed reference to an NFT in the collection
@@ -177,24 +176,24 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
             return &self.ownedNFTs[id] as &NonFungibleToken.NFT
         }
 
-        //getUserExpired can get contract userNFT's expTime with id
+        //getUserExpired can get contract NFTUser's expTime with id
         pub fun getUserExpired(id: UInt64): UInt64 {
           return self.expired[id] ?? 0
         }
 
         // create a user in the special NFTID with the expTime
         // precondition is the NFTID in this Collection and the special NFTID's user is out of deadline or no user before
-        pub fun createUserNFT(NFTID: UInt64 , expTime: UInt64): @NonFungibleTokenUser.UserNFT {
-            var newUserNFT <- create UserNFT(initID: NFTID , initExpTime: expTime)
-            emit CreateUserNFT(id: NFTID, expTime: expTime)
+        pub fun createNFTUser(NFTID: UInt64 , expTime: UInt64): @NonFungibleTokenUser.NFTUser {
+            var newNFTUser <- create NFTUser(initID: NFTID , initExpTime: expTime)
+            emit CreateNFTUser(id: NFTID, expTime: expTime)
             self.expired[NFTID] = expTime
-            return <- newUserNFT
+            return <- newNFTUser
         }
 
         //destroy the collection
         destroy() {
             destroy self.ownedNFTs
-            destroy self.userNFTs
+            destroy self.NFTUsers
         }
 
     }
