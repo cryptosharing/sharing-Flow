@@ -245,4 +245,5 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
         // store a minter resource in account storage
         self.account.save(<-create NFTMinter(), to: self.MinterStoragePath)
 	}
+	
 }
