@@ -233,7 +233,7 @@ pub contract ExampleNFT :NonFungibleToken,NonFungibleTokenUser{
         self.CollectionUserReceiverPath = /public/NFTUserReceiver
         self.MinterStoragePath = /storage/NFTMinter
 
-		    // store an empty NFT Collection in account storage
+        // store an empty NFT Collection in account storage
         self.account.save(<-self.createEmptyCollection(), to: self.CollectionStoragePath)
 
         // publish a reference to the Collection in storage with the interface NonFungibleToken.Receiver
